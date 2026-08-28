@@ -115,20 +115,10 @@
     background:var(--bg);
   }
 
-  .topbar{
-    display:flex;
-    align-items:baseline;
-    justify-content:space-between;
-    padding:calc(env(safe-area-inset-top,0px) + 20px) 20px 14px;
-    border-bottom:1px solid var(--line);
-  }
-  .brand{font-size:19px;font-weight:700;letter-spacing:0.02em;}
-  .today{font-size:12px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;letter-spacing:0.02em;}
-
   .content{
     flex:1;
     overflow-y:auto;
-    padding:16px 16px 100px;
+    padding:calc(env(safe-area-inset-top,0px) + 16px) 16px 100px;
   }
   .tab-panel{display:flex;flex-direction:column;gap:16px;animation:fade .18s ease;}
   .tab-panel[hidden]{display:none;}
@@ -165,12 +155,16 @@
   }
   .shift-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;gap:4px;}
   .shift-cell{
-    aspect-ratio:1;width:100%;min-width:0;border-radius:8px;display:flex;align-items:center;justify-content:center;
-    position:relative;background:var(--surface-2);color:var(--text);border:none;padding:0;margin:0;overflow:hidden;
+    aspect-ratio:1;width:100%;min-width:0;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1px;position:relative;background:var(--surface-2);color:var(--text);border:none;padding:2px;margin:0;overflow:hidden;
   }
   .shift-cell.empty{background:none;visibility:hidden;pointer-events:none;}
   .shift-cell.today{box-shadow:inset 0 0 0 1.6px var(--accent);}
   .shift-cell .d{font-size:12.5px;font-family:'IBM Plex Mono',monospace;line-height:1;}
+  .shift-cell .lbl{
+    font-size:8px;font-weight:600;line-height:1.1;max-width:92%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
   .chip.add-chip{border-style:dashed;color:var(--text-dim);}
   .swatch-grid{display:flex;flex-wrap:wrap;gap:9px;}
   .swatch{width:28px;height:28px;border-radius:50%;border:2px solid transparent;padding:0;}
@@ -374,6 +368,7 @@
     background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
     padding:11px 12px;font-size:16px;width:100%;
   }
+  .field input[type="date"]{width:auto;max-width:170px;}
   .seg{display:flex;background:var(--surface-2);border-radius:8px;padding:3px;gap:3px;}
   .seg button{flex:1;padding:9px;border-radius:6px;font-size:13px;font-weight:500;color:var(--text-dim);}
   .seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,0.08);}
@@ -392,11 +387,6 @@
 </style>
 
 <div class="app">
-  <header class="topbar">
-    <div class="brand">口袋手帳</div>
-    <div class="today num" id="todayLabel"></div>
-  </header>
-
   <main class="content">
 
     <section class="tab-panel" id="panel-shifts" hidden>
@@ -644,7 +634,7 @@
   }
 
   var DEFAULT_SHIFT_TYPES = [
-    {key:'work', label:'上班', color:'var(--cat-1)'},
+    {key:'work', label:'上班', color:'var(--cat-8)'},
     {key:'off', label:'休假', color:'var(--text-dim)'}
   ];
 
@@ -656,6 +646,10 @@
     shiftTypes: loadJSON('pt_shifttypes', null) || DEFAULT_SHIFT_TYPES.slice(),
     shifts: loadObj('pt_shifts', {})
   };
+  (function migrateWorkColor(){
+    var w = state.shiftTypes.filter(function(t){ return t.key === 'work'; })[0];
+    if(w && w.color !== 'var(--cat-8)'){ w.color = 'var(--cat-8)'; saveJSON('pt_shifttypes', state.shiftTypes); }
+  })();
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function todayStr(){
@@ -704,13 +698,6 @@
     var f = state.shiftTypes.filter(function(s){ return s.key === key; });
     return f[0] || null;
   }
-
-  // ---------- top bar date ----------
-  (function(){
-    var d = new Date();
-    document.getElementById('todayLabel').textContent =
-      d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
-  })();
 
   // ---------- tabs ----------
   var panels = {
@@ -842,21 +829,23 @@
 
       var svg = document.getElementById('donutSvg');
       svg.innerHTML = '';
-      var cx = 90, cy = 90, r = 70, sw = 24, gapPx = 3, halfGapPx = 5;
+      var cx = 90, cy = 90, r = 70, sw = 24, gapPx = 3, groupGapPx = 5;
       var circumference = 2 * Math.PI * r;
-      var half = circumference / 2;
+      var combinedTotal = income + expense;
+      var incomeLen = combinedTotal ? (income / combinedTotal) * circumference : 0;
+      var expenseLen = combinedTotal ? (expense / combinedTotal) * circumference : 0;
       var track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       track.setAttribute('cx', cx); track.setAttribute('cy', cy); track.setAttribute('r', r);
       track.setAttribute('fill', 'none'); track.setAttribute('stroke', 'var(--surface-2)'); track.setAttribute('stroke-width', sw);
       svg.appendChild(track);
 
-      function drawHalf(keys, byMap, total, startOffset){
+      function drawGroup(keys, byMap, groupTotal, startOffset, groupLen){
         var offset = startOffset;
-        var usable = half - halfGapPx;
+        var usable = Math.max(groupLen - groupGapPx, 0);
         keys.forEach(function(k){
           var info = catInfo(k);
           var amt = byMap[k];
-          var rawLen = total ? (amt / total) * usable : 0;
+          var rawLen = groupTotal ? (amt / groupTotal) * usable : 0;
           var visLen = Math.max(rawLen - gapPx, 0);
           var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', cx); circle.setAttribute('cy', cy); circle.setAttribute('r', r);
@@ -868,11 +857,11 @@
           circle.setAttribute('pointer-events', 'stroke');
           circle.setAttribute('data-cat', k);
           svg.appendChild(circle);
-          offset += rawLen;
+          offset += groupTotal ? (amt / groupTotal) * groupLen : 0;
         });
       }
-      drawHalf(incKeys, byIncomeCat, income, 0);
-      drawHalf(expKeys, byCat, expense, half);
+      drawGroup(incKeys, byIncomeCat, income, 0, incomeLen);
+      drawGroup(expKeys, byCat, expense, incomeLen, expenseLen);
 
       var legendWrap = document.getElementById('donutLegend');
       legendWrap.innerHTML = '';
@@ -1199,13 +1188,12 @@
       var cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'shift-cell' + (ds === today ? ' today' : '');
-      cell.innerHTML = '<span class="d">' + day + '</span>';
-      if(shiftKey){
-        var info = shiftTypeInfo(shiftKey);
-        if(info){
-          cell.style.background = info.color;
-          cell.querySelector('.d').style.color = tagTextColor(info.color);
-        }
+      var info = shiftKey ? shiftTypeInfo(shiftKey) : null;
+      cell.innerHTML = '<span class="d">' + day + '</span>' + (info ? '<span class="lbl">'+escapeHtml(info.label)+'</span>' : '');
+      if(info){
+        cell.style.background = info.color;
+        var tc = tagTextColor(info.color);
+        cell.querySelectorAll('.d,.lbl').forEach(function(el){ el.style.color = tc; });
       }
       cell.setAttribute('data-date', ds);
       cell.addEventListener('click', function(){
